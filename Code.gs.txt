@@ -1,0 +1,290 @@
+// ============================================================
+//  GESTION DES ACTIVITÉS — Code.gs
+//  Copiez ce fichier dans votre projet Apps Script
+// ============================================================
+
+const SHEET_NAMES = {
+  ACTIVITES : 'Activités',
+  EFFECTIF  : 'Effectif',
+  DASHBOARD : 'Dashboard',
+  REPONSES  : 'Réponses'
+};
+
+// ── WEB APP ──────────────────────────────────────────────────
+
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('Gestion des Activités')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// ── API (appelées depuis le front) ───────────────────────────
+
+/** Renvoie toutes les activités + tout l'effectif */
+function getInitData() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    const activites = _readActivites(ss);
+    const effectif  = _readEffectif(ss);
+
+    return { success: true, activites, effectif };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Renvoie les statuts déjà saisis pour un email donné */
+function getStatutsByEmail(email) {
+  try {
+    const ss    = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
+    if (!sheet || sheet.getLastRow() <= 1) return { success: true, statuts: {} };
+
+    const data    = sheet.getDataRange().getValues();
+    const statuts = {};
+    const key     = email.toLowerCase();
+
+    data.slice(1).forEach(row => {
+      if (String(row[0]).toLowerCase() === key && row[1])
+        statuts[String(row[1])] = String(row[2]);
+    });
+
+    return { success: true, statuts };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Enregistre / met à jour un statut et rafraîchit le dashboard */
+function setStatut(email, activiteId, statut) {
+  try {
+    const ss  = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
+
+    if (!sheet) {
+      sheet = ss.insertSheet(SHEET_NAMES.REPONSES);
+      sheet.appendRow(['Email', 'ActivitéID', 'Statut', 'Horodatage']);
+      sheet.getRange(1,1,1,4).setFontWeight('bold').setBackground('#e8eaed');
+    }
+
+    const emailLower = email.toLowerCase();
+    let updated = false;
+
+    if (sheet.getLastRow() > 1) {
+      const data = sheet.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0]).toLowerCase() === emailLower &&
+            String(data[i][1]) === String(activiteId)) {
+          sheet.getRange(i + 1, 3, 1, 2).setValues([[statut, new Date()]]);
+          updated = true;
+          break;
+        }
+      }
+    }
+
+    if (!updated) sheet.appendRow([emailLower, activiteId, statut, new Date()]);
+
+    _updateDashboard(ss);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ── DASHBOARD ────────────────────────────────────────────────
+
+function _updateDashboard(ss) {
+  if (!ss) ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  let dashboard = ss.getSheetByName(SHEET_NAMES.DASHBOARD);
+  if (!dashboard) dashboard = ss.insertSheet(SHEET_NAMES.DASHBOARD);
+
+  const activites = _readActivites(ss);
+  const effectif  = _readEffectif(ss);
+  if (!activites.length || !effectif.length) return;
+
+  // Lookup réponses
+  const repSheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
+  const lookup   = {};
+  if (repSheet && repSheet.getLastRow() > 1) {
+    repSheet.getDataRange().getValues().slice(1).forEach(row => {
+      lookup[`${String(row[0]).toLowerCase()}_${row[1]}`] = String(row[2]);
+    });
+  }
+
+  const STATUS_COLORS = {
+    'Présent':    { bg: '#34a853', fg: '#ffffff' },
+    'Absent':     { bg: '#ea4335', fg: '#ffffff' },
+    'En mission': { bg: '#ff9800', fg: '#ffffff' },
+    'En attente': { bg: '#e8eaed', fg: '#5f6368' }
+  };
+
+  dashboard.clear();
+  dashboard.clearFormats();
+
+  const numCols = 2 + activites.length;
+  const numRows = 1 + effectif.length;
+
+  // Construire les données
+  const allRows  = [];
+  const bgColors = [];
+  const fgColors = [];
+
+  // En-tête
+  const headerRow = ['Nom', 'Grade',
+    ...activites.map(a => `${a.nom}${a.date ? '\n' + a.date : ''}`)];
+  allRows.push(headerRow);
+  bgColors.push(Array(numCols).fill('#1a237e'));
+  fgColors.push(Array(numCols).fill('#ffffff'));
+
+  // Lignes personnel
+  effectif.forEach(p => {
+    const row   = [p.nom, p.grade || ''];
+    const rowBg = ['#f8f9fa', '#f8f9fa'];
+    const rowFg = ['#202124', '#202124'];
+
+    activites.forEach(a => {
+      const k      = `${p.email.toLowerCase()}_${a.id}`;
+      const statut = lookup[k] || 'En attente';
+      const c      = STATUS_COLORS[statut] || STATUS_COLORS['En attente'];
+      row.push(statut);
+      rowBg.push(c.bg);
+      rowFg.push(c.fg);
+    });
+
+    allRows.push(row);
+    bgColors.push(rowBg);
+    fgColors.push(rowFg);
+  });
+
+  // Écriture en batch
+  const range = dashboard.getRange(1, 1, numRows, numCols);
+  range.setValues(allRows);
+  range.setBackgrounds(bgColors);
+  range.setFontColors(fgColors);
+  range.setHorizontalAlignment('center');
+  range.setVerticalAlignment('middle');
+  range.setBorder(true,true,true,true,true,true,'#dadce0',SpreadsheetApp.BorderStyle.SOLID);
+
+  // Header bold + wrap
+  dashboard.getRange(1,1,1,numCols).setFontWeight('bold').setWrap(true);
+
+  // Hauteurs & largeurs
+  dashboard.setRowHeight(1, 50);
+  for (let i = 2; i <= numRows; i++) dashboard.setRowHeight(i, 36);
+  dashboard.setColumnWidth(1, 160);
+  dashboard.setColumnWidth(2, 90);
+  for (let c = 3; c <= numCols; c++) dashboard.setColumnWidth(c, 130);
+
+  // Figer
+  dashboard.setFrozenRows(1);
+  dashboard.setFrozenColumns(2);
+}
+
+// Alias public pour le menu
+function updateDashboard() { _updateDashboard(); }
+
+// ── LECTURE SHEETS ───────────────────────────────────────────
+
+function _readActivites(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.ACTIVITES);
+  if (!sheet || sheet.getLastRow() <= 1) return [];
+  return sheet.getDataRange().getValues().slice(1)
+    .filter(r => r[0] && r[1])
+    .map(r => ({
+      id          : String(r[0]),
+      nom         : String(r[1]),
+      date        : r[2] instanceof Date
+                      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'dd/MM/yyyy')
+                      : String(r[2] || ''),
+      description : String(r[3] || '')
+    }));
+}
+
+function _readEffectif(ss) {
+  const sheet = ss.getSheetByName(SHEET_NAMES.EFFECTIF);
+  if (!sheet || sheet.getLastRow() <= 1) return [];
+  return sheet.getDataRange().getValues().slice(1)
+    .filter(r => r[0] && r[1])
+    .map(r => ({
+      id    : String(r[0]),
+      nom   : String(r[1]),
+      grade : String(r[2] || ''),
+      email : String(r[3] || '').toLowerCase()
+    }));
+}
+
+// ── AUTO-ID via onEdit ────────────────────────────────────────
+
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  const name  = sheet.getName();
+  if (name !== SHEET_NAMES.ACTIVITES && name !== SHEET_NAMES.EFFECTIF) return;
+
+  const row = e.range.getRow();
+  if (row <= 1) return;
+
+  // Générer un ID si la colonne A est vide et la colonne B remplie
+  const colA = sheet.getRange(row, 1);
+  const colB = sheet.getRange(row, 2).getValue();
+  if (!colA.getValue() && colB) {
+    const data  = sheet.getDataRange().getValues();
+    let   maxId = 0;
+    data.slice(1).forEach(r => { const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n; });
+    colA.setValue(maxId + 1);
+  }
+}
+
+// ── SETUP & MENU ─────────────────────────────────────────────
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('⚙️ Activités')
+    .addItem('🚀 Initialiser les feuilles',        'setup')
+    .addItem('🔄 Rafraîchir le Dashboard',          'updateDashboard')
+    .addItem('🌐 Afficher le lien de l\'app web',   'showWebAppUrl')
+    .addToUi();
+}
+
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+
+  [
+    { name: SHEET_NAMES.ACTIVITES, headers: ['ID','Activité','Date','Description'] },
+    { name: SHEET_NAMES.EFFECTIF,  headers: ['ID','Nom','Grade','Email'] },
+    { name: SHEET_NAMES.REPONSES,  headers: ['Email','ActivitéID','Statut','Horodatage'] },
+    { name: SHEET_NAMES.DASHBOARD, headers: null }
+  ].forEach(({ name, headers }) => {
+    let s = ss.getSheetByName(name);
+    if (!s) s = ss.insertSheet(name);
+    if (headers) {
+      s.getRange(1,1,1,headers.length)
+       .setValues([headers])
+       .setFontWeight('bold')
+       .setBackground('#e8eaed');
+    }
+  });
+
+  ui.alert('✅ Initialisation terminée',
+    'Les 4 feuilles sont prêtes.\n\n' +
+    '1. Remplissez "Effectif" (Nom, Grade, Email)\n' +
+    '2. Ajoutez des activités dans "Activités"\n' +
+    '3. Déployez : Extensions › Apps Script › Déployer › Nouveau déploiement\n' +
+    '   Type : Application Web — Accès : Tous\n' +
+    '4. Partagez le lien avec votre effectif',
+    ui.ButtonSet.OK);
+}
+
+function showWebAppUrl() {
+  const ui  = SpreadsheetApp.getUi();
+  const url = ScriptApp.getService().getUrl();
+  if (url) {
+    ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK);
+  } else {
+    ui.alert('⚠️ Application non déployée',
+      'Allez dans Extensions › Apps Script › Déployer › Nouveau déploiement',
+      ui.ButtonSet.OK);
+  }
+}
