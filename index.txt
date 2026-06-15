@@ -6,303 +6,136 @@
   <title>Gestion des Activités</title>
   <style>
     :root {
-      --primary      : #1a237e;
-      --primary-mid  : #283593;
-      --accent       : #1565c0;
-      --present-bg   : #2e7d32;
-      --present-lt   : #e8f5e9;
-      --absent-bg    : #c62828;
-      --absent-lt    : #ffebee;
-      --mission-bg   : #e65100;
-      --mission-lt   : #fff3e0;
-      --attente-bg   : #37474f;
-      --attente-lt   : #eceff1;
-      --surface      : #f0f2f5;
-      --card         : #ffffff;
-      --text         : #1a1a2e;
-      --muted        : #5f6368;
-      --border       : #dadce0;
+      --primary    : #1a237e;
+      --accent     : #1565c0;
+      --present-bg : #2e7d32; --present-lt : #e8f5e9;
+      --absent-bg  : #c62828; --absent-lt  : #ffebee;
+      --mission-bg : #e65100; --mission-lt : #fff3e0;
+      --attente-bg : #37474f; --attente-lt : #eceff1;
+      --locked-bg  : #6a1a6a; --locked-lt  : #f3e5f5;
+      --surface    : #f0f2f5;
+      --card       : #ffffff;
+      --text       : #1a1a2e;
+      --muted      : #5f6368;
+      --border     : #dadce0;
     }
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--surface); color: var(--text); min-height: 100vh; }
 
-    body {
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background: var(--surface);
-      color: var(--text);
-      min-height: 100vh;
-    }
-
-    /* ── HEADER ── */
-    .hdr {
-      background: linear-gradient(135deg, var(--primary), var(--accent));
-      color: #fff;
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.25);
-      position: sticky;
-      top: 0;
-      z-index: 50;
-    }
+    .hdr { background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.25); position: sticky; top: 0; z-index: 50; }
     .hdr-ico { font-size: 26px; }
-    .hdr h1  { font-size: 17px; font-weight: 700; letter-spacing: .4px; }
+    .hdr h1  { font-size: 17px; font-weight: 700; }
     .hdr p   { font-size: 12px; opacity: .75; margin-top: 1px; }
 
-    /* ── LOADING ── */
-    .loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      padding: 80px 20px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .spinner {
-      width: 38px; height: 38px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .75s linear infinite;
-    }
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 80px 20px; color: var(--muted); font-size: 14px; }
+    .spinner { width: 38px; height: 38px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── LOGIN ── */
-    .login-wrap {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: calc(100vh - 58px);
-      padding: 24px;
-    }
-    .login-card {
-      background: var(--card);
-      border-radius: 18px;
-      padding: 40px 32px;
-      width: 100%;
-      max-width: 390px;
-      box-shadow: 0 6px 32px rgba(0,0,0,.1);
-      text-align: center;
-    }
+    .login-wrap { display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 58px); padding: 24px; }
+    .login-card { background: var(--card); border-radius: 18px; padding: 40px 32px; width: 100%; max-width: 390px; box-shadow: 0 6px 32px rgba(0,0,0,.1); text-align: center; }
     .login-card .l-ico { font-size: 50px; margin-bottom: 14px; }
-    .login-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .login-card h2  { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
     .login-card .l-sub { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
-
-    input[type="email"] {
-      width: 100%;
-      padding: 12px 14px;
-      border: 2px solid var(--border);
-      border-radius: 10px;
-      font-size: 15px;
-      font-family: inherit;
-      background: #f8f9fa;
-      color: var(--text);
-      margin-bottom: 6px;
-      transition: border-color .2s;
-    }
+    input[type="email"] { width: 100%; padding: 12px 14px; border: 2px solid var(--border); border-radius: 10px; font-size: 15px; font-family: inherit; background: #f8f9fa; color: var(--text); margin-bottom: 6px; transition: border-color .2s; }
     input[type="email"]:focus { outline: none; border-color: var(--accent); background: #fff; }
-    .input-error {
-      font-size: 12px;
-      color: var(--absent-bg);
-      font-weight: 600;
-      margin-bottom: 10px;
-      min-height: 18px;
-      text-align: left;
-      padding-left: 2px;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 13px;
-      border: none;
-      border-radius: 10px;
-      font-size: 15px;
-      font-weight: 700;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all .2s;
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--primary), var(--accent));
-      color: #fff;
-      box-shadow: 0 2px 8px rgba(26,35,126,.2);
-    }
-    .btn-primary:hover:not(:disabled)  { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(26,35,126,.35); }
+    .input-error { font-size: 12px; color: var(--absent-bg); font-weight: 600; margin-bottom: 10px; min-height: 18px; text-align: left; }
+    .btn { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; transition: all .2s; }
+    .btn-primary { background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; box-shadow: 0 2px 8px rgba(26,35,126,.2); }
+    .btn-primary:hover:not(:disabled) { transform: translateY(-1px); }
     .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
 
-    /* ── MAIN ── */
-    .main { padding: 18px 16px; max-width: 920px; margin: 0 auto; }
+    .main { padding: 18px 16px; max-width: 960px; margin: 0 auto; }
 
-    /* user bar */
-    .user-bar {
-      background: var(--card);
-      border-radius: 12px;
-      padding: 12px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 18px;
-      box-shadow: 0 1px 6px rgba(0,0,0,.06);
-    }
+    .user-bar { background: var(--card); border-radius: 12px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; box-shadow: 0 1px 6px rgba(0,0,0,.06); }
     .u-info { display: flex; align-items: center; gap: 12px; }
-    .u-avatar {
-      width: 42px; height: 42px;
-      background: linear-gradient(135deg, var(--primary), var(--accent));
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      color: #fff; font-weight: 800; font-size: 15px;
-      flex-shrink: 0;
-    }
+    .u-avatar { width: 42px; height: 42px; background: linear-gradient(135deg, var(--primary), var(--accent)); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 15px; flex-shrink: 0; }
     .u-name  { font-weight: 700; font-size: 15px; }
     .u-grade { font-size: 12px; color: var(--muted); margin-top: 1px; }
-    .btn-change {
-      border: 1.5px solid var(--border);
-      background: none;
-      border-radius: 8px;
-      padding: 7px 14px;
-      font-size: 13px;
-      font-family: inherit;
-      cursor: pointer;
-      color: var(--muted);
-      transition: all .2s;
-      white-space: nowrap;
-    }
+    .btn-change { border: 1.5px solid var(--border); background: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-family: inherit; cursor: pointer; color: var(--muted); transition: all .2s; white-space: nowrap; }
     .btn-change:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* section title */
-    .sec-title {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: var(--muted);
-      margin: 0 4px 12px;
-    }
+    .sec-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 4px 12px; }
 
-    /* cards grid */
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
-      gap: 14px;
-    }
+    /* ── CARTES ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
 
-    .acard {
-      background: var(--card);
-      border-radius: 16px;
-      padding: 18px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.06);
-      border: 2.5px solid transparent;
-      transition: border-color .25s, box-shadow .25s;
-    }
+    .acard { background: var(--card); border-radius: 16px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border: 2.5px solid var(--border); transition: border-color .25s, box-shadow .25s; }
     .acard:hover { box-shadow: 0 4px 18px rgba(0,0,0,.1); }
     .acard.s-present { border-color: var(--present-bg); }
     .acard.s-absent  { border-color: var(--absent-bg);  }
     .acard.s-mission { border-color: var(--mission-bg); }
+    .acard.s-locked  { border-color: var(--locked-bg); opacity: .88; }
 
-    .acard-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 6px;
-      gap: 8px;
-    }
-    .acard-name { font-size: 15px; font-weight: 700; flex: 1; }
-    .acard-date {
-      font-size: 11px;
-      font-weight: 700;
-      background: #e8eaf6;
-      color: var(--primary);
-      padding: 3px 10px;
-      border-radius: 20px;
-      white-space: nowrap;
-    }
-    .acard-desc {
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.55;
-      margin-bottom: 14px;
-      min-height: 18px;
-    }
+    /* nom */
+    .acard-name { font-size: 16px; font-weight: 800; margin-bottom: 10px; }
 
-    /* statut */
-    .s-label {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .6px;
-      color: var(--muted);
-      margin-bottom: 7px;
-    }
-    .s-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 6px;
-    }
-    .sbtn {
-      padding: 8px 4px;
-      border-radius: 9px;
-      font-size: 12px;
-      font-weight: 700;
-      font-family: inherit;
-      cursor: pointer;
-      border: 2px solid transparent;
-      transition: all .18s;
+    /* bloc dates : début → fin sur une ligne */
+    .acard-dates {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 4px;
+      gap: 6px;
+      background: #f0f4ff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
     }
-    .sbtn:hover:not(:disabled) { transform: scale(1.04); }
-    .sbtn:disabled             { cursor: default; }
+    .date-item { display: flex; flex-direction: column; font-size: 12px; }
+    .date-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 1px; }
+    .date-val   { font-weight: 700; color: var(--primary); }
+    .date-duree { background: #e8f5e9; color: var(--present-bg); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-left: auto; white-space: nowrap; }
 
+    /* description */
+    .acard-desc { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 10px; }
+
+    /* deadline */
+    .acard-deadline {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+    }
+    .acard-deadline.ok     { background: #fff8e1; color: #b06000; border: 1.5px solid #ffe082; }
+    .acard-deadline.passed { background: var(--locked-lt); color: var(--locked-bg); border: 1.5px solid var(--locked-bg); }
+
+    /* séparateur */
+    .acard-sep { border: none; border-top: 1.5px solid var(--border); margin: 12px 0; }
+
+    /* statut */
+    .s-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin-bottom: 7px; }
+    .s-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .sbtn { padding: 8px 4px; border-radius: 9px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer; border: 2px solid transparent; transition: all .18s; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .sbtn:hover:not(:disabled) { transform: scale(1.04); }
+    .sbtn:disabled { cursor: default; }
     .sbtn.present { background: var(--present-lt); color: var(--present-bg); }
-    .sbtn.absent  { background: var(--absent-lt);  color: var(--absent-bg);  }
+    .sbtn.absent  { background: var(--absent-lt);  color: var(--absent-bg); }
     .sbtn.mission { background: var(--mission-lt); color: var(--mission-bg); }
     .sbtn.attente { background: var(--attente-lt); color: var(--attente-bg); }
-
     .sbtn.active.present { background: var(--present-bg); color: #fff; border-color: var(--present-bg); }
-    .sbtn.active.absent  { background: var(--absent-bg);  color: #fff; border-color: var(--absent-bg);  }
+    .sbtn.active.absent  { background: var(--absent-bg);  color: #fff; border-color: var(--absent-bg); }
     .sbtn.active.mission { background: var(--mission-bg); color: #fff; border-color: var(--mission-bg); }
     .sbtn.active.attente { background: var(--attente-bg); color: #fff; border-color: var(--attente-bg); }
 
-    /* empty */
-    .empty {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--muted);
-    }
+    /* clôturé */
+    .locked-banner { background: var(--locked-lt); border: 1.5px solid var(--locked-bg); border-radius: 10px; padding: 10px 14px; text-align: center; font-size: 13px; font-weight: 700; color: var(--locked-bg); line-height: 1.6; }
+
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
     .empty .e-ico { font-size: 46px; margin-bottom: 12px; }
     .empty h3 { font-size: 17px; margin-bottom: 6px; }
-    .empty p  { font-size: 14px; }
 
-    /* toast */
-    .toast {
-      position: fixed;
-      bottom: 22px;
-      left: 50%;
-      transform: translateX(-50%) translateY(80px);
-      background: #333;
-      color: #fff;
-      padding: 11px 22px;
-      border-radius: 24px;
-      font-size: 14px;
-      font-weight: 600;
-      transition: transform .3s ease;
-      z-index: 999;
-      white-space: nowrap;
-      box-shadow: 0 4px 18px rgba(0,0,0,.3);
-      pointer-events: none;
-    }
-    .toast.show    { transform: translateX(-50%) translateY(0); }
-    .toast.ok      { background: var(--present-bg); }
-    .toast.err     { background: var(--absent-bg);  }
+    .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(80px); background: #333; color: #fff; padding: 11px 22px; border-radius: 24px; font-size: 14px; font-weight: 600; transition: transform .3s ease; z-index: 999; white-space: nowrap; box-shadow: 0 4px 18px rgba(0,0,0,.3); pointer-events: none; }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.ok   { background: var(--present-bg); }
+    .toast.err  { background: var(--absent-bg); }
+    .toast.warn { background: var(--locked-bg); }
 
     @media (max-width: 480px) {
-      .main  { padding: 12px; }
-      .grid  { grid-template-columns: 1fr; }
+      .main { padding: 12px; }
+      .grid { grid-template-columns: 1fr; }
       .login-card { padding: 28px 18px; }
     }
   </style>
@@ -311,29 +144,14 @@
 
 <header class="hdr">
   <div class="hdr-ico">🎖️</div>
-  <div>
-    <h1>Gestion des Activités</h1>
-    <p>Positionnement du personnel</p>
-  </div>
+  <div><h1>Gestion des Activités</h1><p>Positionnement du personnel</p></div>
 </header>
 
-<div id="app">
-  <div class="loading"><div class="spinner"></div><p>Chargement…</p></div>
-</div>
-
+<div id="app"><div class="loading"><div class="spinner"></div><p>Chargement…</p></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
-// ─── État ────────────────────────────────────────────────────
-const S = {
-  view      : 'loading',  // loading | login | main
-  activites : [],
-  effectif  : [],
-  user      : null,
-  statuts   : {}          // activiteId -> statut
-};
-
-// ─── Utilitaires ─────────────────────────────────────────────
+const S = { view:'loading', activites:[], effectif:[], user:null, statuts:{} };
 const $ = id => document.getElementById(id);
 
 function render() {
@@ -343,38 +161,48 @@ function render() {
   else app.innerHTML = `<div class="loading"><div class="spinner"></div><p>Chargement…</p></div>`;
 }
 
-function toast(msg, type = '') {
+function toast(msg, type='') {
   const t = $('toast');
-  t.textContent = msg;
-  t.className   = 'toast ' + type + ' show';
-  setTimeout(() => { t.className = 'toast'; }, 2600);
+  t.textContent = msg; t.className = 'toast '+type+' show';
+  setTimeout(() => t.className='toast', 3200);
 }
 
-function initials(nom) {
-  return nom.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+function initials(n) { return n.trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+
+/* Parse "DD/MM/YYYY HH:MM" → timestamp. Robuste côté client. */
+function parseDeadline(str) {
+  if (!str) return null;
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+  if (m) return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]).getTime();
+  // fallback si deadlineTs fourni directement
+  return null;
 }
 
-// ─── Vue login ───────────────────────────────────────────────
+function isDeadlinePassed(a) {
+  // Priorité au timestamp numérique envoyé par le serveur
+  if (a.deadlineTs) return Date.now() > a.deadlineTs;
+  // Fallback : parse la chaîne formatée
+  const ts = parseDeadline(a.deadline);
+  if (ts) return Date.now() > ts;
+  return false;
+}
+
+// ── LOGIN ──────────────────────────────────────────────────
 function renderLogin(app) {
   app.innerHTML = `
-    <div class="login-wrap">
-      <div class="login-card">
-        <div class="l-ico">🎖️</div>
-        <h2>Identification</h2>
-        <p class="l-sub">Saisissez votre adresse mail pour accéder à vos activités</p>
-        <input type="email" id="inp-email" placeholder="votre.mail@exemple.com"
-          oninput="onEmailInput()" onkeydown="if(event.key==='Enter')login()" autocomplete="email" />
-        <div class="input-error" id="email-err"></div>
-        <button class="btn btn-primary" id="btn-login" onclick="login()" disabled>
-          Accéder →
-        </button>
-      </div>
-    </div>`;
+    <div class="login-wrap"><div class="login-card">
+      <div class="l-ico">🎖️</div>
+      <h2>Identification</h2>
+      <p class="l-sub">Saisissez votre adresse mail pour accéder à vos activités</p>
+      <input type="email" id="inp-email" placeholder="votre.mail@exemple.com"
+        oninput="onEmailInput()" onkeydown="if(event.key==='Enter')login()" autocomplete="email"/>
+      <div class="input-error" id="email-err"></div>
+      <button class="btn btn-primary" id="btn-login" onclick="login()" disabled>Accéder →</button>
+    </div></div>`;
 }
 
 function onEmailInput() {
-  const val = $('inp-email').value.trim();
-  $('btn-login').disabled = !val.includes('@');
+  $('btn-login').disabled = !$('inp-email').value.includes('@');
   $('email-err').textContent = '';
 }
 
@@ -382,141 +210,156 @@ function login() {
   const email = $('inp-email').value.trim().toLowerCase();
   if (!email) return;
   const user = S.effectif.find(p => p.email === email);
-  if (!user) {
-    $('email-err').textContent = '❌ Adresse mail non reconnue — contactez votre responsable.';
-    return;
-  }
-
+  if (!user) { $('email-err').textContent = '❌ Adresse mail non reconnue — contactez votre responsable.'; return; }
   S.user = user;
-  $('app').innerHTML = `<div class="loading"><div class="spinner"></div><p>Chargement des statuts…</p></div>`;
-
+  $('app').innerHTML = `<div class="loading"><div class="spinner"></div><p>Chargement…</p></div>`;
   google.script.run
     .withSuccessHandler(res => {
       if (res.success) { S.statuts = res.statuts; S.view = 'main'; render(); }
-      else             { toast('Erreur : ' + res.error, 'err'); S.view = 'login'; render(); }
+      else { toast('Erreur : '+res.error,'err'); S.view='login'; render(); }
     })
-    .withFailureHandler(() => { toast('Erreur de connexion', 'err'); S.view = 'login'; render(); })
+    .withFailureHandler(() => { toast('Erreur de connexion','err'); S.view='login'; render(); })
     .getStatutsByEmail(email);
 }
 
-// ─── Vue principale ──────────────────────────────────────────
+// ── MAIN ──────────────────────────────────────────────────
 function renderMain(app) {
-  const u  = S.user;
   const nb = S.activites.length;
-
-  let content = '';
-  if (nb === 0) {
-    content = `
-      <div class="empty">
-        <div class="e-ico">📋</div>
-        <h3>Aucune activité</h3>
-        <p>L'administrateur n'a pas encore ajouté d'activités.</p>
-      </div>`;
-  } else {
-    content = `<div class="grid">${S.activites.map(a => cardHtml(a)).join('')}</div>`;
-  }
-
   app.innerHTML = `
     <div class="main">
       <div class="user-bar">
         <div class="u-info">
-          <div class="u-avatar">${initials(u.nom)}</div>
+          <div class="u-avatar">${initials(S.user.nom)}</div>
           <div>
-            <div class="u-name">${esc(u.nom)}</div>
-            <div class="u-grade">${esc(u.grade || 'Personnel')}</div>
+            <div class="u-name">${esc(S.user.nom)}</div>
+            <div class="u-grade">${esc(S.user.grade||'Personnel')}</div>
           </div>
         </div>
-        <button class="btn-change" onclick="logout()">Changer d'utilisateur</button>
+        <button class="btn-change" onclick="logout()">Changer</button>
       </div>
-      <div class="sec-title">${nb} activité${nb !== 1 ? 's' : ''}</div>
-      ${content}
+      <div class="sec-title">${nb} activité${nb!==1?'s':''}</div>
+      ${nb===0
+        ? `<div class="empty"><div class="e-ico">📋</div><h3>Aucune activité</h3><p>L'administrateur n'a pas encore ajouté d'activités.</p></div>`
+        : `<div class="grid">${S.activites.map(cardHtml).join('')}</div>`}
     </div>`;
 }
 
 function cardHtml(a) {
   const statut = S.statuts[a.id] || 'En attente';
-  const cls = { 'Présent': 's-present', 'Absent': 's-absent', 'En mission': 's-mission' }[statut] || '';
+  const locked = isDeadlinePassed(a);
+  const statusCls = {'Présent':'s-present','Absent':'s-absent','En mission':'s-mission'}[statut]||'';
+  const cardCls   = locked ? 's-locked' : statusCls;
 
-  const BTNS = [
-    { key: 'Présent',    c: 'present', ico: '✅' },
-    { key: 'Absent',     c: 'absent',  ico: '❌' },
-    { key: 'En mission', c: 'mission', ico: '🚁' },
-    { key: 'En attente', c: 'attente', ico: '⏳' }
-  ];
+  // ── Bloc dates : Début → Fin ──
+  let datesHtml = '';
+  if (a.debut || a.fin) {
+    datesHtml = `<div class="acard-dates">`;
+    if (a.debut) datesHtml += `<div class="date-item"><span class="date-label">Début</span><span class="date-val">▶ ${esc(a.debut)}</span></div>`;
+    if (a.fin)  datesHtml += `<div class="date-item"><span class="date-label">Fin</span><span class="date-val">⏹ ${esc(a.fin)}</span></div>`;
+    if (a.duree) datesHtml += `<span class="date-duree">⏱ ${esc(a.duree)} j</span>`;
+    datesHtml += `</div>`;
+  }
 
-  const btns = BTNS.map(b => {
-    const active = statut === b.key;
-    return `<button
-      class="sbtn ${b.c}${active ? ' active' : ''}"
-      onclick="setStatut('${esc(a.id)}','${escQ(b.key)}',this)"
-      ${active ? 'disabled' : ''}
-    >${b.ico} ${b.key}</button>`;
-  }).join('');
+  // ── Description ──
+  const descHtml = a.description
+    ? `<div class="acard-desc">${esc(a.description)}</div>` : '';
+
+  // ── Deadline ──
+  let deadlineHtml = '';
+  if (a.deadline) {
+    const cls = locked ? 'passed' : 'ok';
+    const ico = locked ? '🔒' : '⚠️';
+    deadlineHtml = `<div class="acard-deadline ${cls}">${ico} Deadline : ${esc(a.deadline)}</div>`;
+  }
+
+  // ── Zone statut ──
+  let statutZone = '';
+  if (locked) {
+    const label = statut !== 'En attente'
+      ? `Statut enregistré : <strong>${esc(statut)}</strong>`
+      : 'Aucun statut enregistré';
+    statutZone = `<div class="locked-banner">🔒 Positionnement clôturé<br><small style="font-weight:400">${label}</small></div>`;
+  } else {
+    const BTNS = [
+      {key:'Présent',    c:'present', ico:'✅'},
+      {key:'Absent',     c:'absent',  ico:'❌'},
+      {key:'En mission', c:'mission', ico:'🚁'},
+      {key:'En attente', c:'attente', ico:'⏳'}
+    ];
+    const btns = BTNS.map(b => {
+      const active = statut === b.key;
+      return `<button class="sbtn ${b.c}${active?' active':''}"
+        onclick="setStatut('${esc(a.id)}','${escQ(b.key)}')"
+        ${active?'disabled':''}>${b.ico} ${b.key}</button>`;
+    }).join('');
+    statutZone = `<div class="s-label">Votre statut</div><div class="s-grid" id="btns-${esc(a.id)}">${btns}</div>`;
+  }
 
   return `
-    <div class="acard ${cls}" id="card-${esc(a.id)}">
-      <div class="acard-head">
-        <div class="acard-name">${esc(a.nom)}</div>
-        ${a.date ? `<div class="acard-date">📅 ${esc(a.date)}</div>` : ''}
-      </div>
-      ${a.description ? `<div class="acard-desc">${esc(a.description)}</div>` : '<div class="acard-desc"></div>'}
-      <div class="s-label">Votre statut</div>
-      <div class="s-grid" id="btns-${esc(a.id)}">${btns}</div>
+    <div class="acard ${cardCls}" id="card-${esc(a.id)}">
+      <div class="acard-name">${esc(a.nom)}</div>
+      ${datesHtml}
+      ${descHtml}
+      ${deadlineHtml}
+      <hr class="acard-sep">
+      ${statutZone}
     </div>`;
 }
 
 function setStatut(activiteId, statut) {
-  const btnsEl = $('btns-' + activiteId);
-  btnsEl.querySelectorAll('button').forEach(b => b.disabled = true);
+  const a = S.activites.find(x => x.id === activiteId);
+  if (a && isDeadlinePassed(a)) { toast('🔒 Délai dépassé — positionnement clôturé','warn'); return; }
+
+  const btnsEl = $('btns-'+activiteId);
+  if (btnsEl) btnsEl.querySelectorAll('button').forEach(b => b.disabled=true);
 
   google.script.run
     .withSuccessHandler(res => {
       if (res.success) {
         S.statuts[activiteId] = statut;
-        const cardEl = $('card-' + activiteId);
-        const a = S.activites.find(x => x.id === activiteId);
+        const cardEl = $('card-'+activiteId);
         if (cardEl && a) cardEl.outerHTML = cardHtml(a);
-        toast('✅ Statut mis à jour', 'ok');
+        toast('✅ Statut mis à jour','ok');
+      } else if (res.error === 'deadline') {
+        toast('🔒 Délai dépassé — positionnement clôturé','warn');
+        if (btnsEl) btnsEl.querySelectorAll('button').forEach(b => b.disabled=false);
       } else {
-        toast('❌ Erreur : ' + res.error, 'err');
-        btnsEl.querySelectorAll('button').forEach(b => b.disabled = false);
+        toast('❌ Erreur : '+res.error,'err');
+        if (btnsEl) btnsEl.querySelectorAll('button').forEach(b => b.disabled=false);
       }
     })
     .withFailureHandler(() => {
-      toast('❌ Erreur de connexion', 'err');
-      btnsEl.querySelectorAll('button').forEach(b => b.disabled = false);
+      toast('❌ Erreur de connexion','err');
+      if (btnsEl) btnsEl.querySelectorAll('button').forEach(b => b.disabled=false);
     })
     .setStatut(S.user.email, activiteId, statut);
 }
 
-function logout() { S.user = null; S.statuts = {}; S.view = 'login'; render(); }
+function logout() { S.user=null; S.statuts={}; S.view='login'; render(); }
 
-// ─── Helpers anti-XSS ────────────────────────────────────────
 function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function escQ(s) { return String(s).replace(/'/g,"\\'"); }
 
-// ─── Initialisation ──────────────────────────────────────────
+// ── INIT ────────────────────────────────────────────────────
 google.script.run
   .withSuccessHandler(res => {
     if (!res.success) {
-      $('app').innerHTML = `<div class="loading"><div style="font-size:40px">❌</div><p>${esc(res.error || 'Erreur')}</p></div>`;
+      $('app').innerHTML=`<div class="loading"><div style="font-size:40px">❌</div><p>${esc(res.error||'Erreur')}</p></div>`;
       return;
     }
     S.activites = res.activites;
     S.effectif  = res.effectif;
     if (!S.effectif.length) {
-      $('app').innerHTML = `<div class="loading"><div style="font-size:40px">⚠️</div><p>Aucun personnel enregistré — contactez l'administrateur.</p></div>`;
+      $('app').innerHTML=`<div class="loading"><div style="font-size:40px">⚠️</div><p>Aucun personnel enregistré.</p></div>`;
       return;
     }
-    S.view = 'login';
-    render();
+    S.view='login'; render();
   })
   .withFailureHandler(() => {
-    $('app').innerHTML = `<div class="loading"><div style="font-size:40px">❌</div><p>Impossible de joindre le serveur.</p></div>`;
+    $('app').innerHTML=`<div class="loading"><div style="font-size:40px">❌</div><p>Impossible de joindre le serveur.</p></div>`;
   })
   .getInitData();
 </script>
