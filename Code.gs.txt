@@ -1,6 +1,5 @@
 // ============================================================
-//  GESTION DES ACTIVITÉS — Code.gs
-//  Copiez ce fichier dans votre projet Apps Script
+//  GESTION DES ACTIVITÉS — Code.gs  (v3)
 // ============================================================
 
 const SHEET_NAMES = {
@@ -10,6 +9,9 @@ const SHEET_NAMES = {
   REPONSES  : 'Réponses'
 };
 
+// Colonnes feuille Activités
+// A=ID | B=Activité | C=Début | D=Fin | E=Durée(j) | F=Description | G=Deadline
+
 // ── WEB APP ──────────────────────────────────────────────────
 
 function doGet(e) {
@@ -18,71 +20,64 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-// ── API (appelées depuis le front) ───────────────────────────
+// ── API ───────────────────────────────────────────────────────
 
-/** Renvoie toutes les activités + tout l'effectif */
 function getInitData() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    const activites = _readActivites(ss);
-    const effectif  = _readEffectif(ss);
-
-    return { success: true, activites, effectif };
+    return { success: true, activites: _readActivites(ss), effectif: _readEffectif(ss) };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
-/** Renvoie les statuts déjà saisis pour un email donné */
 function getStatutsByEmail(email) {
   try {
     const ss    = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
     if (!sheet || sheet.getLastRow() <= 1) return { success: true, statuts: {} };
-
-    const data    = sheet.getDataRange().getValues();
     const statuts = {};
-    const key     = email.toLowerCase();
-
-    data.slice(1).forEach(row => {
+    const key = email.toLowerCase();
+    sheet.getDataRange().getValues().slice(1).forEach(row => {
       if (String(row[0]).toLowerCase() === key && row[1])
         statuts[String(row[1])] = String(row[2]);
     });
-
     return { success: true, statuts };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
-/** Enregistre / met à jour un statut et rafraîchit le dashboard */
 function setStatut(email, activiteId, statut) {
   try {
-    const ss  = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
 
+    // ── Vérification deadline côté serveur ──
+    const activite = _readActivites(ss).find(a => a.id === String(activiteId));
+    if (activite && activite.deadlineTs) {
+      if (new Date().getTime() > activite.deadlineTs)
+        return { success: false, error: 'deadline' };
+    }
+
+    let sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
     if (!sheet) {
       sheet = ss.insertSheet(SHEET_NAMES.REPONSES);
-      sheet.appendRow(['Email', 'ActivitéID', 'Statut', 'Horodatage']);
+      sheet.appendRow(['Email','ActivitéID','Statut','Horodatage']);
       sheet.getRange(1,1,1,4).setFontWeight('bold').setBackground('#e8eaed');
     }
 
     const emailLower = email.toLowerCase();
     let updated = false;
-
     if (sheet.getLastRow() > 1) {
       const data = sheet.getDataRange().getValues();
       for (let i = 1; i < data.length; i++) {
         if (String(data[i][0]).toLowerCase() === emailLower &&
             String(data[i][1]) === String(activiteId)) {
-          sheet.getRange(i + 1, 3, 1, 2).setValues([[statut, new Date()]]);
-          updated = true;
-          break;
+          sheet.getRange(i+1,3,1,2).setValues([[statut, new Date()]]);
+          updated = true; break;
         }
       }
     }
-
     if (!updated) sheet.appendRow([emailLower, activiteId, statut, new Date()]);
 
     _updateDashboard(ss);
@@ -92,11 +87,58 @@ function setStatut(email, activiteId, statut) {
   }
 }
 
+// ── MAILS ────────────────────────────────────────────────────
+
+function sendReminderEmails() {
+  const ui  = SpreadsheetApp.getUi();
+  const ss  = SpreadsheetApp.getActiveSpreadsheet();
+  const effectif  = _readEffectif(ss);
+  const activites = _readActivites(ss);
+
+  if (!effectif.length)  { ui.alert('⚠️', 'Effectif vide.', ui.ButtonSet.OK); return; }
+  if (!activites.length) { ui.alert('⚠️', 'Aucune activité.', ui.ButtonSet.OK); return; }
+
+  // URL de l'application web (à mettre à jour si vous redeployez)
+  const webUrl = 'https://script.google.com/macros/s/AKfycbxgMGvzySABDva80jJwbI5j3MXmIBSmVEmKYjpH6DhmFgJ6gWffAIwrzTpBEjkzsME/exec';
+
+  const confirm = ui.alert(
+    '📧 Envoi des rappels',
+    `Envoyer à ${effectif.length} personne(s) ?\n\n` +
+    effectif.map(p => `• ${p.grade ? p.grade+' ' : ''}${p.nom} — ${p.email}`).join('\n'),
+    ui.ButtonSet.YES_NO);
+  if (confirm !== ui.Button.YES) return;
+
+  let ok = 0, ko = 0;
+  effectif.forEach(p => {
+    if (!p.email) { ko++; return; }
+    try {
+      MailApp.sendEmail({
+        to: p.email,
+        subject: '📋 Nouvelle activité — Positionnez-vous',
+        body:
+`Bonjour ${p.grade ? p.grade+' ' : ''}${p.nom},
+
+Une nouvelle activité est en ligne. Merci de vous positionner dès que possible.
+
+👉 Accéder : ${webUrl}
+
+Connectez-vous avec votre identifiant de connexion.
+
+Cordialement.`
+      });
+      ok++;
+    } catch(e) { ko++; }
+  });
+
+  ui.alert('✅ Envoi terminé',
+    `${ok} mail(s) envoyé(s).${ko ? '\n⚠️ '+ko+' échec(s).' : ''}`,
+    ui.ButtonSet.OK);
+}
+
 // ── DASHBOARD ────────────────────────────────────────────────
 
 function _updateDashboard(ss) {
   if (!ss) ss = SpreadsheetApp.getActiveSpreadsheet();
-
   let dashboard = ss.getSheetByName(SHEET_NAMES.DASHBOARD);
   if (!dashboard) dashboard = ss.insertSheet(SHEET_NAMES.DASHBOARD);
 
@@ -104,14 +146,11 @@ function _updateDashboard(ss) {
   const effectif  = _readEffectif(ss);
   if (!activites.length || !effectif.length) return;
 
-  // Lookup réponses
   const repSheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
-  const lookup   = {};
-  if (repSheet && repSheet.getLastRow() > 1) {
-    repSheet.getDataRange().getValues().slice(1).forEach(row => {
-      lookup[`${String(row[0]).toLowerCase()}_${row[1]}`] = String(row[2]);
-    });
-  }
+  const lookup = {};
+  if (repSheet && repSheet.getLastRow() > 1)
+    repSheet.getDataRange().getValues().slice(1).forEach(r =>
+      lookup[`${String(r[0]).toLowerCase()}_${r[1]}`] = String(r[2]));
 
   const STATUS_COLORS = {
     'Présent':    { bg: '#34a853', fg: '#ffffff' },
@@ -120,86 +159,109 @@ function _updateDashboard(ss) {
     'En attente': { bg: '#e8eaed', fg: '#5f6368' }
   };
 
-  dashboard.clear();
-  dashboard.clearFormats();
-
-  const numCols = 2 + activites.length;
+  dashboard.clear(); dashboard.clearFormats();
+  const numCols = 2 + activites.length + 1; // +1 pour colonne "Jours présents"
   const numRows = 1 + effectif.length;
 
-  // Construire les données
-  const allRows  = [];
-  const bgColors = [];
-  const fgColors = [];
+  const allRows = [], bgColors = [], fgColors = [];
 
-  // En-tête
-  const headerRow = ['Nom', 'Grade',
-    ...activites.map(a => `${a.nom}${a.date ? '\n' + a.date : ''}`)];
-  allRows.push(headerRow);
+  // En-tête : Nom | Grade | Jours présents | Activité 1 | Activité 2 ...
+  allRows.push(['Nom','Grade','⏱ Jours\nprésents', ...activites.map(a => {
+    let label = a.nom;
+    if (a.debut) label += '\n▶ '+a.debut;
+    if (a.fin)   label += '\n⏹ '+a.fin;
+    if (a.duree) label += '\n⏱ '+a.duree+'j';
+    return label;
+  })]);
   bgColors.push(Array(numCols).fill('#1a237e'));
   fgColors.push(Array(numCols).fill('#ffffff'));
 
-  // Lignes personnel
   effectif.forEach(p => {
-    const row   = [p.nom, p.grade || ''];
-    const rowBg = ['#f8f9fa', '#f8f9fa'];
-    const rowFg = ['#202124', '#202124'];
-
+    // Calcul jours présents en premier
+    let joursPresents = 0;
     activites.forEach(a => {
-      const k      = `${p.email.toLowerCase()}_${a.id}`;
-      const statut = lookup[k] || 'En attente';
-      const c      = STATUS_COLORS[statut] || STATUS_COLORS['En attente'];
-      row.push(statut);
-      rowBg.push(c.bg);
-      rowFg.push(c.fg);
+      const k = `${p.email.toLowerCase()}_${a.id}`;
+      const s = lookup[k] || 'En attente';
+      if (s === 'Présent' && a.duree) {
+        const d = parseFloat(a.duree);
+        if (!isNaN(d)) joursPresents += d;
+      }
     });
 
-    allRows.push(row);
-    bgColors.push(rowBg);
-    fgColors.push(rowFg);
+    // Ligne : Nom | Grade | Jours présents | statuts activités...
+    const row   = [p.nom, p.grade||'', joursPresents > 0 ? joursPresents+' j' : '—'];
+    const rowBg = ['#f8f9fa','#f8f9fa', joursPresents > 0 ? '#e8f5e9' : '#f8f9fa'];
+    const rowFg = ['#202124','#202124', joursPresents > 0 ? '#1b5e20' : '#9e9e9e'];
+
+    activites.forEach(a => {
+      const k = `${p.email.toLowerCase()}_${a.id}`;
+      const s = lookup[k] || 'En attente';
+      const c = STATUS_COLORS[s] || STATUS_COLORS['En attente'];
+      row.push(s); rowBg.push(c.bg); rowFg.push(c.fg);
+    });
+
+    allRows.push(row); bgColors.push(rowBg); fgColors.push(rowFg);
   });
 
-  // Écriture en batch
-  const range = dashboard.getRange(1, 1, numRows, numCols);
-  range.setValues(allRows);
-  range.setBackgrounds(bgColors);
-  range.setFontColors(fgColors);
-  range.setHorizontalAlignment('center');
-  range.setVerticalAlignment('middle');
-  range.setBorder(true,true,true,true,true,true,'#dadce0',SpreadsheetApp.BorderStyle.SOLID);
-
-  // Header bold + wrap
+  const range = dashboard.getRange(1,1,numRows,numCols);
+  range.setValues(allRows).setBackgrounds(bgColors).setFontColors(fgColors)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle')
+    .setBorder(true,true,true,true,true,true,'#dadce0',SpreadsheetApp.BorderStyle.SOLID);
   dashboard.getRange(1,1,1,numCols).setFontWeight('bold').setWrap(true);
-
-  // Hauteurs & largeurs
-  dashboard.setRowHeight(1, 50);
-  for (let i = 2; i <= numRows; i++) dashboard.setRowHeight(i, 36);
-  dashboard.setColumnWidth(1, 160);
-  dashboard.setColumnWidth(2, 90);
-  for (let c = 3; c <= numCols; c++) dashboard.setColumnWidth(c, 130);
-
-  // Figer
-  dashboard.setFrozenRows(1);
-  dashboard.setFrozenColumns(2);
+  dashboard.setRowHeight(1,70);
+  for (let i=2;i<=numRows;i++) dashboard.setRowHeight(i,36);
+  dashboard.setColumnWidth(1,160); dashboard.setColumnWidth(2,90);
+  dashboard.setColumnWidth(3,100); // colonne jours présents
+  for (let c=4;c<=numCols;c++) dashboard.setColumnWidth(c,140);
+  dashboard.setFrozenRows(1); dashboard.setFrozenColumns(3); // gel Nom+Grade+Jours
 }
 
-// Alias public pour le menu
 function updateDashboard() { _updateDashboard(); }
 
 // ── LECTURE SHEETS ───────────────────────────────────────────
+
+/** Convertit une valeur de cellule date en objet Date robuste */
+function _toDate(val) {
+  if (!val) return null;
+  if (val instanceof Date) return val;
+  const s = String(val).trim();
+  // Format DD/MM/YYYY HH:MM ou DD/MM/YYYY
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (m) return new Date(+m[3], +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0));
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+/** Formate une valeur de cellule date en chaîne lisible */
+function _fmt(val) {
+  const d = _toDate(val);
+  if (!d) return '';
+  try {
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  } catch(e) {
+    return Utilities.formatDate(d, 'Europe/Paris', 'dd/MM/yyyy HH:mm');
+  }
+}
 
 function _readActivites(ss) {
   const sheet = ss.getSheetByName(SHEET_NAMES.ACTIVITES);
   if (!sheet || sheet.getLastRow() <= 1) return [];
   return sheet.getDataRange().getValues().slice(1)
     .filter(r => r[0] && r[1])
-    .map(r => ({
-      id          : String(r[0]),
-      nom         : String(r[1]),
-      date        : r[2] instanceof Date
-                      ? Utilities.formatDate(r[2], Session.getScriptTimeZone(), 'dd/MM/yyyy')
-                      : String(r[2] || ''),
-      description : String(r[3] || '')
-    }));
+    .map(r => {
+      const deadlineDate = _toDate(r[6]);
+      return {
+        id          : String(r[0]),
+        nom         : String(r[1]),
+        debut       : _fmt(r[2]),
+        fin         : _fmt(r[3]),
+        duree       : r[4] ? String(r[4]) : '',
+        description : String(r[5] || ''),
+        deadline    : _fmt(r[6]),
+        // timestamp numérique pour comparaison côté serveur ET client
+        deadlineTs  : deadlineDate ? deadlineDate.getTime() : null
+      };
+    });
 }
 
 function _readEffectif(ss) {
@@ -215,24 +277,22 @@ function _readEffectif(ss) {
     }));
 }
 
-// ── AUTO-ID via onEdit ────────────────────────────────────────
+// ── AUTO-ID ──────────────────────────────────────────────────
 
 function onEdit(e) {
   const sheet = e.source.getActiveSheet();
   const name  = sheet.getName();
   if (name !== SHEET_NAMES.ACTIVITES && name !== SHEET_NAMES.EFFECTIF) return;
-
   const row = e.range.getRow();
   if (row <= 1) return;
-
-  // Générer un ID si la colonne A est vide et la colonne B remplie
-  const colA = sheet.getRange(row, 1);
-  const colB = sheet.getRange(row, 2).getValue();
+  const colA = sheet.getRange(row,1);
+  const colB = sheet.getRange(row,2).getValue();
   if (!colA.getValue() && colB) {
-    const data  = sheet.getDataRange().getValues();
-    let   maxId = 0;
-    data.slice(1).forEach(r => { const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n; });
-    colA.setValue(maxId + 1);
+    let maxId = 0;
+    sheet.getDataRange().getValues().slice(1).forEach(r => {
+      const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n;
+    });
+    colA.setValue(maxId+1);
   }
 }
 
@@ -241,18 +301,18 @@ function onEdit(e) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('⚙️ Activités')
-    .addItem('🚀 Initialiser les feuilles',        'setup')
-    .addItem('🔄 Rafraîchir le Dashboard',          'updateDashboard')
-    .addItem('🌐 Afficher le lien de l\'app web',   'showWebAppUrl')
+    .addItem('🚀 Initialiser les feuilles',      'setup')
+    .addItem('🔄 Rafraîchir le Dashboard',        'updateDashboard')
+    .addItem('📧 Envoyer les mails de rappel',    'sendReminderEmails')
+    .addItem('🌐 Afficher le lien de l\'app web', 'showWebAppUrl')
     .addToUi();
 }
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
-
   [
-    { name: SHEET_NAMES.ACTIVITES, headers: ['ID','Activité','Date','Description'] },
+    { name: SHEET_NAMES.ACTIVITES, headers: ['ID','Activité','Date/Heure Début','Date/Heure Fin','Durée (jours)','Description','Deadline positionnement'] },
     { name: SHEET_NAMES.EFFECTIF,  headers: ['ID','Nom','Grade','Email'] },
     { name: SHEET_NAMES.REPONSES,  headers: ['Email','ActivitéID','Statut','Horodatage'] },
     { name: SHEET_NAMES.DASHBOARD, headers: null }
@@ -260,31 +320,21 @@ function setup() {
     let s = ss.getSheetByName(name);
     if (!s) s = ss.insertSheet(name);
     if (headers) {
-      s.getRange(1,1,1,headers.length)
-       .setValues([headers])
-       .setFontWeight('bold')
-       .setBackground('#e8eaed');
+      s.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaed');
+      if (name === SHEET_NAMES.ACTIVITES)
+        [60,180,160,160,90,220,160].forEach((w,i) => s.setColumnWidth(i+1,w));
     }
   });
-
   ui.alert('✅ Initialisation terminée',
-    'Les 4 feuilles sont prêtes.\n\n' +
-    '1. Remplissez "Effectif" (Nom, Grade, Email)\n' +
-    '2. Ajoutez des activités dans "Activités"\n' +
-    '3. Déployez : Extensions › Apps Script › Déployer › Nouveau déploiement\n' +
-    '   Type : Application Web — Accès : Tous\n' +
-    '4. Partagez le lien avec votre effectif',
+    'Feuille Activités :\n  A:ID  B:Activité  C:Début  D:Fin  E:Durée(j)  F:Description  G:Deadline\n\n' +
+    'Feuille Effectif :\n  A:ID  B:Nom  C:Grade  D:Email',
     ui.ButtonSet.OK);
 }
 
 function showWebAppUrl() {
   const ui  = SpreadsheetApp.getUi();
-  const url = ScriptApp.getService().getUrl();
-  if (url) {
-    ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK);
-  } else {
-    ui.alert('⚠️ Application non déployée',
-      'Allez dans Extensions › Apps Script › Déployer › Nouveau déploiement',
-      ui.ButtonSet.OK);
-  }
+  const url = 'https://script.google.com/macros/s/AKfycbxgMGvzySABDva80jJwbI5j3MXmIBSmVEmKYjpH6DhmFgJ6gWffAIwrzTpBEjkzsME/exec';
+  url
+    ? ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK)
+    : ui.alert('⚠️ Non déployée', 'Extensions › Apps Script › Déployer › Nouveau déploiement', ui.ButtonSet.OK);
 }
