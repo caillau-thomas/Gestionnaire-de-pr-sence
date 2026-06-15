@@ -1,5 +1,5 @@
 // ============================================================
-//  GESTION DES ACTIVITÉS — Code.gs  (v3)
+//  GESTION DES ACTIVITÉS — Code.gs  (v6.5 - Fix Heures & Meta)
 // ============================================================
 
 const SHEET_NAMES = {
@@ -8,9 +8,6 @@ const SHEET_NAMES = {
   DASHBOARD : 'Dashboard',
   REPONSES  : 'Réponses'
 };
-
-// Colonnes feuille Activités
-// A=ID | B=Activité | C=Début | D=Fin | E=Durée(j) | F=Description | G=Deadline
 
 // ── WEB APP ──────────────────────────────────────────────────
 
@@ -52,39 +49,42 @@ function setStatut(email, activiteId, statut) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
-    // ── Vérification deadline côté serveur ──
+    // Vérification deadline côté serveur
     const activite = _readActivites(ss).find(a => a.id === String(activiteId));
     if (activite && activite.deadlineTs) {
       if (new Date().getTime() > activite.deadlineTs)
         return { success: false, error: 'deadline' };
     }
 
-    let sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
-    if (!sheet) {
-      sheet = ss.insertSheet(SHEET_NAMES.REPONSES);
-      sheet.appendRow(['Email','ActivitéID','Statut','Horodatage']);
-      sheet.getRange(1,1,1,4).setFontWeight('bold').setBackground('#e8eaed');
-    }
-
-    const emailLower = email.toLowerCase();
-    let updated = false;
-    if (sheet.getLastRow() > 1) {
-      const data = sheet.getDataRange().getValues();
-      for (let i = 1; i < data.length; i++) {
-        if (String(data[i][0]).toLowerCase() === emailLower &&
-            String(data[i][1]) === String(activiteId)) {
-          sheet.getRange(i+1,3,1,2).setValues([[statut, new Date()]]);
-          updated = true; break;
-        }
-      }
-    }
-    if (!updated) sheet.appendRow([emailLower, activiteId, statut, new Date()]);
-
+    _saveStatutToResponses(ss, email, activiteId, statut);
     _updateDashboard(ss);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+function _saveStatutToResponses(ss, email, activiteId, statut) {
+  let sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAMES.REPONSES);
+    sheet.appendRow(['Email','ActivitéID','Statut','Horodatage']);
+    sheet.getRange(1,1,1,4).setFontWeight('bold').setBackground('#e8eaed');
+  }
+
+  const emailLower = email.toLowerCase();
+  let updated = false;
+  if (sheet.getLastRow() > 1) {
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).toLowerCase() === emailLower &&
+          String(data[i][1]) === String(activiteId)) {
+        sheet.getRange(i+1,3,1,2).setValues([[statut, new Date()]]);
+        updated = true; break;
+      }
+    }
+  }
+  if (!updated) sheet.appendRow([emailLower, activiteId, statut, new Date()]);
 }
 
 // ── MAILS ────────────────────────────────────────────────────
@@ -98,8 +98,7 @@ function sendReminderEmails() {
   if (!effectif.length)  { ui.alert('⚠️', 'Effectif vide.', ui.ButtonSet.OK); return; }
   if (!activites.length) { ui.alert('⚠️', 'Aucune activité.', ui.ButtonSet.OK); return; }
 
-  // URL de l'application web (à mettre à jour si vous redeployez)
-  const webUrl = 'https://script.google.com/macros/s/AKfycbxgMGvzySABDva80jJwbI5j3MXmIBSmVEmKYjpH6DhmFgJ6gWffAIwrzTpBEjkzsME/exec';
+  const webUrl = 'https://script.google.com/macros/s/AKfycbzUuLs5fjnKB70lnyriW3fgzUGtmGG5KcY39WsukztKRG4dh0ZnKKC3qUlY19Wh0DPz/exec';
 
   const confirm = ui.alert(
     '📧 Envoi des rappels',
@@ -156,39 +155,47 @@ function _updateDashboard(ss) {
     'Présent':    { bg: '#34a853', fg: '#ffffff' },
     'Absent':     { bg: '#ea4335', fg: '#ffffff' },
     'En mission': { bg: '#ff9800', fg: '#ffffff' },
-    'En attente': { bg: '#e8eaed', fg: '#5f6368' }
+    'En attente': { bg: '#e8eaed', fg: '#5f6368' },
+    'Indisponible': { bg: '#757575', fg: '#ffffff' }
   };
 
   dashboard.clear(); dashboard.clearFormats();
-  const numCols = 2 + activites.length + 1; // +1 pour colonne "Jours présents"
+  const numCols = 3 + activites.length; 
   const numRows = 1 + effectif.length;
 
   const allRows = [], bgColors = [], fgColors = [];
 
-  // En-tête : Nom | Grade | Jours présents | Activité 1 | Activité 2 ...
   allRows.push(['Nom','Grade','⏱ Jours\nprésents', ...activites.map(a => {
-    let label = a.nom;
+    let label = (a.type === 'Mission' ? '[MISSION] ' : '') + a.nom;
     if (a.debut) label += '\n▶ '+a.debut;
     if (a.fin)   label += '\n⏹ '+a.fin;
-    if (a.duree) label += '\n⏱ '+a.duree+'j';
+    if (a.type === 'Mission' && a.nbSemaines) label += '\n⏱ ' + a.nbSemaines + ' sem.';
+    else if (a.duree) label += '\n⏱ '+a.duree+'j';
     return label;
   })]);
   bgColors.push(Array(numCols).fill('#1a237e'));
   fgColors.push(Array(numCols).fill('#ffffff'));
 
   effectif.forEach(p => {
-    // Calcul jours présents en premier
     let joursPresents = 0;
+    
     activites.forEach(a => {
       const k = `${p.email.toLowerCase()}_${a.id}`;
       const s = lookup[k] || 'En attente';
-      if (s === 'Présent' && a.duree) {
-        const d = parseFloat(a.duree);
-        if (!isNaN(d)) joursPresents += d;
+      
+      if (a.type === 'Mission') {
+        if (s && s !== 'En attente' && s !== 'Indisponible') {
+          const semCount = s.split(',').map(x => x.trim()).filter(x => /^S\d+$/i.test(x)).length;
+          joursPresents += (semCount * 7);
+        }
+      } else {
+        if (s === 'Présent' && a.duree) {
+          const d = parseFloat(a.duree);
+          if (!isNaN(d)) joursPresents += d;
+        }
       }
     });
 
-    // Ligne : Nom | Grade | Jours présents | statuts activités...
     const row   = [p.nom, p.grade||'', joursPresents > 0 ? joursPresents+' j' : '—'];
     const rowBg = ['#f8f9fa','#f8f9fa', joursPresents > 0 ? '#e8f5e9' : '#f8f9fa'];
     const rowFg = ['#202124','#202124', joursPresents > 0 ? '#1b5e20' : '#9e9e9e'];
@@ -196,8 +203,20 @@ function _updateDashboard(ss) {
     activites.forEach(a => {
       const k = `${p.email.toLowerCase()}_${a.id}`;
       const s = lookup[k] || 'En attente';
-      const c = STATUS_COLORS[s] || STATUS_COLORS['En attente'];
-      row.push(s); rowBg.push(c.bg); rowFg.push(c.fg);
+      
+      row.push(s);
+      
+      if (a.type === 'Mission') {
+        if (s === 'En attente' || s === 'Indisponible') {
+          const c = STATUS_COLORS[s];
+          rowBg.push(c.bg); rowFg.push(c.fg);
+        } else {
+          rowBg.push('#e3f2fd'); rowFg.push('#0d47a1');
+        }
+      } else {
+        const c = STATUS_COLORS[s] || STATUS_COLORS['En attente'];
+        rowBg.push(c.bg); rowFg.push(c.fg);
+      }
     });
 
     allRows.push(row); bgColors.push(rowBg); fgColors.push(rowFg);
@@ -211,36 +230,39 @@ function _updateDashboard(ss) {
   dashboard.setRowHeight(1,70);
   for (let i=2;i<=numRows;i++) dashboard.setRowHeight(i,36);
   dashboard.setColumnWidth(1,160); dashboard.setColumnWidth(2,90);
-  dashboard.setColumnWidth(3,100); // colonne jours présents
+  dashboard.setColumnWidth(3,100);
   for (let c=4;c<=numCols;c++) dashboard.setColumnWidth(c,140);
-  dashboard.setFrozenRows(1); dashboard.setFrozenColumns(3); // gel Nom+Grade+Jours
+  dashboard.setFrozenRows(1); dashboard.setFrozenColumns(3);
+
+  // FIX SANS ERREUR : On utilise une note cachée sur la cellule A1 pour stocker les IDs d'activités de manière ultra-fiable
+  const targetCell = dashboard.getRange(1, 1);
+  targetCell.setNote(JSON.stringify(activites.map(a => a.id)));
 }
 
 function updateDashboard() { _updateDashboard(); }
 
 // ── LECTURE SHEETS ───────────────────────────────────────────
 
-/** Convertit une valeur de cellule date en objet Date robuste */
 function _toDate(val) {
   if (!val) return null;
   if (val instanceof Date) return val;
   const s = String(val).trim();
-  // Format DD/MM/YYYY HH:MM ou DD/MM/YYYY
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
   if (m) return new Date(+m[3], +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0));
   const d = new Date(s);
   return isNaN(d) ? null : d;
 }
 
-/** Formate une valeur de cellule date en chaîne lisible */
 function _fmt(val) {
-  const d = _toDate(val);
-  if (!d) return '';
-  try {
-    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
-  } catch(e) {
-    return Utilities.formatDate(d, 'Europe/Paris', 'dd/MM/yyyy HH:mm');
+  if (!val) return '';
+  if (val instanceof Date) {
+    try {
+      return Utilities.formatDate(val, Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+    } catch(e) {
+      return Utilities.formatDate(val, 'Europe/Paris', 'dd/MM/yyyy HH:mm');
+    }
   }
+  return String(val).trim(); // Si c'est déjà du texte (saisi à la main), on le renvoie brut
 }
 
 function _readActivites(ss) {
@@ -249,7 +271,8 @@ function _readActivites(ss) {
   return sheet.getDataRange().getValues().slice(1)
     .filter(r => r[0] && r[1])
     .map(r => {
-      const deadlineDate = _toDate(r[6]);
+      const deadlineStr = _fmt(r[6]);
+      const deadlineDate = _toDate(deadlineStr);
       return {
         id          : String(r[0]),
         nom         : String(r[1]),
@@ -257,9 +280,10 @@ function _readActivites(ss) {
         fin         : _fmt(r[3]),
         duree       : r[4] ? String(r[4]) : '',
         description : String(r[5] || ''),
-        deadline    : _fmt(r[6]),
-        // timestamp numérique pour comparaison côté serveur ET client
-        deadlineTs  : deadlineDate ? deadlineDate.getTime() : null
+        deadline    : deadlineStr,
+        deadlineTs  : deadlineDate ? deadlineDate.getTime() : null,
+        type        : String(r[7] || 'Activités'),
+        nbSemaines  : r[8] ? parseInt(r[8]) : 0
       };
     });
 }
@@ -277,22 +301,163 @@ function _readEffectif(ss) {
     }));
 }
 
-// ── AUTO-ID ──────────────────────────────────────────────────
+// ── FORMULAIRE AJOUT ACTIVITÉ (INTERFACE AVEC INPUT TEXTE MANUEL) ──
+
+function openActivityForm() {
+  const html = HtmlService.createHtmlOutput(
+`<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; padding: 16px; color: #333; background-color: #f8f9fa; }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-weight: bold; font-size: 13px; margin-bottom: 2px; color: #1a237e; }
+    .hint { font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic; }
+    input, select, textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-family: inherit; font-size: 13px; }
+    input:focus, select:focus, textarea:focus { border-color: #1565c0; outline: none; }
+    .btn-submit { background: #1a237e; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 10px; padding: 10px; border-radius: 6px; width: 100%; font-size: 14px; }
+    .btn-submit:hover { background: #1565c0; }
+    #mission-only { display: none; background: #e3f2fd; padding: 10px; border-radius: 6px; border-left: 4px solid #1565c0; }
+  </style>
+</head>
+<body>
+  <div class="field">
+    <label>Type d'Activité</label>
+    <select id="type" onchange="toggleType()">
+      <option value="Activités">Activités (Présent, Absent...)</option>
+      <option value="Mission">Mission (Par semaines S1, S2...)</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Nom de l'Activité</label>
+    <input type="text" id="nom" placeholder="Ex: Mission Hélios">
+  </div>
+  <div class="field">
+    <label>Date & Heure Début</label>
+    <div class="hint">Format libre (Ex: 18/06/2026 08:00 ou 18/06/2026)</div>
+    <input type="text" id="debut" placeholder="JJ/MM/AAAA HH:MM">
+  </div>
+  <div class="field">
+    <label>Date & Heure Fin</label>
+    <div class="hint">Format libre (Ex: 22/06/2026 18:00)</div>
+    <input type="text" id="fin" placeholder="JJ/MM/AAAA HH:MM">
+  </div>
+  <div class="field" id="Activités-dur">
+    <label>Durée (jours)</label>
+    <input type="number" id="duree" placeholder="Ex: 5">
+  </div>
+  <div id="mission-only" class="field">
+    <label>Nombre de semaines de la mission</label>
+    <input type="number" id="nbSemaines" min="1" max="52" value="4">
+  </div>
+  <div class="field">
+    <label>Deadline positionnement (Impératif pour le calcul web)</label>
+    <div class="hint">Format strict requis : JJ/MM/AAAA HH:MM</div>
+    <input type="text" id="deadline" placeholder="Ex: 17/06/2026 23:59">
+  </div>
+  <div class="field">
+    <label>Description</label>
+    <textarea id="description" rows="3"></textarea>
+  </div>
+  <button class="btn-submit" onclick="submitForm()">Créer l'Activité</button>
+
+  <script>
+    function toggleType() {
+      const isMission = document.getElementById('type').value === 'Mission';
+      document.getElementById('mission-only').style.display = isMission ? 'block' : 'none';
+      document.getElementById('Activités-dur').style.display = isMission ? 'none' : 'block';
+    }
+    function submitForm() {
+      const data = {
+        type: document.getElementById('type').value,
+        nom: document.getElementById('nom').value,
+        debut: document.getElementById('debut').value,
+        fin: document.getElementById('fin').value,
+        duree: document.getElementById('duree').value,
+        nbSemaines: document.getElementById('nbSemaines').value,
+        deadline: document.getElementById('deadline').value,
+        description: document.getElementById('description').value
+      };
+      if(!data.nom) { alert('Le nom est obligatoire.'); return; }
+      google.script.run.withSuccessHandler(() => {
+        google.script.host.close();
+      }).addActiviteFromForm(data);
+    }
+  </script>
+</body>
+</html>`
+  ).setTitle('Nouvelle Activité');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function addActiviteFromForm(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.ACTIVITES);
+  
+  let maxId = 0;
+  if(sheet.getLastRow() > 1) {
+    sheet.getDataRange().getValues().slice(1).forEach(r => {
+      const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n;
+    });
+  }
+  
+  const nextId = maxId + 1;
+
+  // On injecte directement la chaîne de texte tapée à la main
+  sheet.appendRow([
+    nextId,
+    data.nom,
+    data.debut,
+    data.fin,
+    data.type === 'Mission' ? '' : data.duree,
+    data.description,
+    data.deadline,
+    data.type,
+    data.type === 'Mission' ? data.nbSemaines : ''
+  ]);
+  
+  _updateDashboard(ss);
+}
+
+// ── INTERCEPTIONS DES EDITS DIRECTS SUR LE DASHBOARD ────────────
 
 function onEdit(e) {
   const sheet = e.source.getActiveSheet();
   const name  = sheet.getName();
-  if (name !== SHEET_NAMES.ACTIVITES && name !== SHEET_NAMES.EFFECTIF) return;
-  const row = e.range.getRow();
-  if (row <= 1) return;
-  const colA = sheet.getRange(row,1);
-  const colB = sheet.getRange(row,2).getValue();
-  if (!colA.getValue() && colB) {
-    let maxId = 0;
-    sheet.getDataRange().getValues().slice(1).forEach(r => {
-      const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n;
-    });
-    colA.setValue(maxId+1);
+  const row   = e.range.getRow();
+  const col   = e.range.getColumn();
+  
+  if ((name === SHEET_NAMES.ACTIVITES || name === SHEET_NAMES.EFFECTIF) && row > 1) {
+    const colA = sheet.getRange(row,1);
+    const colB = sheet.getRange(row,2).getValue();
+    if (!colA.getValue() && colB) {
+      let maxId = 0;
+      sheet.getDataRange().getValues().slice(1).forEach(r => {
+        const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n;
+      });
+      colA.setValue(maxId+1);
+    }
+    return;
+  }
+
+  if (name === SHEET_NAMES.DASHBOARD && row > 1 && col > 3) {
+    const ss = e.source;
+    const effectif = _readEffectif(ss);
+    
+    // FIX SANS ERREUR : Récupération propre de la note en A1
+    const targetCell = sheet.getRange(1, 1);
+    const noteText = targetCell.getNote();
+    if (!noteText) return;
+    
+    const activiteIds = JSON.parse(noteText);
+    const targetActiviteId = activiteIds[col - 4];
+    const targetPersonnel  = effectif[row - 2];
+    
+    if (targetPersonnel && targetActiviteId) {
+      const nouveauStatut = String(e.value || 'En attente').trim();
+      _saveStatutToResponses(ss, targetPersonnel.email, targetActiviteId, nouveauStatut);
+      _updateDashboard(ss);
+    }
   }
 }
 
@@ -301,6 +466,8 @@ function onEdit(e) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('⚙️ Activités')
+    .addItem('📝 Formulaire : Ajouter une activité', 'openActivityForm')
+    .addSeparator()
     .addItem('🚀 Initialiser les feuilles',      'setup')
     .addItem('🔄 Rafraîchir le Dashboard',        'updateDashboard')
     .addItem('📧 Envoyer les mails de rappel',    'sendReminderEmails')
@@ -312,7 +479,7 @@ function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
   [
-    { name: SHEET_NAMES.ACTIVITES, headers: ['ID','Activité','Date/Heure Début','Date/Heure Fin','Durée (jours)','Description','Deadline positionnement'] },
+    { name: SHEET_NAMES.ACTIVITES, headers: ['ID','Activité','Date/Heure Début','Date/Heure Fin','Durée (jours)','Description','Deadline positionnement','Type','Nb Semaines'] },
     { name: SHEET_NAMES.EFFECTIF,  headers: ['ID','Nom','Grade','Email'] },
     { name: SHEET_NAMES.REPONSES,  headers: ['Email','ActivitéID','Statut','Horodatage'] },
     { name: SHEET_NAMES.DASHBOARD, headers: null }
@@ -322,18 +489,17 @@ function setup() {
     if (headers) {
       s.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaed');
       if (name === SHEET_NAMES.ACTIVITES)
-        [60,180,160,160,90,220,160].forEach((w,i) => s.setColumnWidth(i+1,w));
+        [60,180,160,160,90,220,160,90,90].forEach((w,i) => s.setColumnWidth(i+1,w));
     }
   });
-  ui.alert('✅ Initialisation terminée',
-    'Feuille Activités :\n  A:ID  B:Activité  C:Début  D:Fin  E:Durée(j)  F:Description  G:Deadline\n\n' +
-    'Feuille Effectif :\n  A:ID  B:Nom  C:Grade  D:Email',
+  ui.alert('✅ Initialisation v6 terminée',
+    'Feuilles prêtes. Saisie de date et heure entièrement libre.',
     ui.ButtonSet.OK);
 }
 
 function showWebAppUrl() {
   const ui  = SpreadsheetApp.getUi();
-  const url = 'https://script.google.com/macros/s/AKfycbxgMGvzySABDva80jJwbI5j3MXmIBSmVEmKYjpH6DhmFgJ6gWffAIwrzTpBEjkzsME/exec';
+  const url = 'https://script.google.com/macros/s/AKfycbzUuLs5fjnKB70lnyriW3fgzUGtmGG5KcY39WsukztKRG4dh0ZnKKC3qUlY19Wh0DPz/exec';
   url
     ? ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK)
     : ui.alert('⚠️ Non déployée', 'Extensions › Apps Script › Déployer › Nouveau déploiement', ui.ButtonSet.OK);
