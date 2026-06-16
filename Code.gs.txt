@@ -32,14 +32,38 @@ function getStatutsByEmail(email) {
   try {
     const ss    = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAMES.REPONSES);
-    if (!sheet || sheet.getLastRow() <= 1) return { success: true, statuts: {} };
     const statuts = {};
-    const key = email.toLowerCase();
-    sheet.getDataRange().getValues().slice(1).forEach(row => {
-      if (String(row[0]).toLowerCase() === key && row[1])
-        statuts[String(row[1])] = String(row[2]);
+    let totalJours = 0;
+
+    const emailLower = email.toLowerCase();
+    const activites = _readActivites(ss);
+
+    // 1. Charger les réponses existantes
+    if (sheet && sheet.getLastRow() > 1) {
+      sheet.getDataRange().getValues().slice(1).forEach(row => {
+        if (String(row[0]).toLowerCase() === emailLower && row[1]) {
+          statuts[String(row[1])] = String(row[2]);
+        }
+      });
+    }
+
+    // 2. Calculer le total de jours en direct pour cet utilisateur
+    activites.forEach(a => {
+      const s = statuts[a.id] || 'En attente';
+      if (a.type === 'Mission') {
+        if (s && s !== 'En attente' && s !== 'Indisponible') {
+          const semCount = s.split(',').map(x => x.trim()).filter(x => /^S\d+$/i.test(x)).length;
+          totalJours += (semCount * 7); // 1 semaine = 7 jours
+        }
+      } else {
+        if (s === 'Présent' && a.duree) {
+          const d = parseFloat(a.duree);
+          if (!isNaN(d)) totalJours += d;
+        }
+      }
     });
-    return { success: true, statuts };
+
+    return { success: true, statuts: statuts, totalJours: totalJours };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -58,7 +82,9 @@ function setStatut(email, activiteId, statut) {
 
     _saveStatutToResponses(ss, email, activiteId, statut);
     _updateDashboard(ss);
-    return { success: true };
+    
+    // RENVOYER LE NOUVEAU TOTAL CALCULÉ AU WEB
+    return getStatutsByEmail(email);
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -98,7 +124,7 @@ function sendReminderEmails() {
   if (!effectif.length)  { ui.alert('⚠️', 'Effectif vide.', ui.ButtonSet.OK); return; }
   if (!activites.length) { ui.alert('⚠️', 'Aucune activité.', ui.ButtonSet.OK); return; }
 
-  const webUrl = 'https://script.google.com/macros/s/AKfycbzUuLs5fjnKB70lnyriW3fgzUGtmGG5KcY39WsukztKRG4dh0ZnKKC3qUlY19Wh0DPz/exec';
+  const webUrl = 'https://script.google.com/macros/s/AKfycbxzmkMdxWyeyKOiJvNUkuIEkFe8D8aDU7dJYjpyRjmKWqI-CBvnbhP0pP_bA0FcmI9Q/exec';
 
   const confirm = ui.alert(
     '📧 Envoi des rappels',
@@ -499,7 +525,7 @@ function setup() {
 
 function showWebAppUrl() {
   const ui  = SpreadsheetApp.getUi();
-  const url = 'https://script.google.com/macros/s/AKfycbzUuLs5fjnKB70lnyriW3fgzUGtmGG5KcY39WsukztKRG4dh0ZnKKC3qUlY19Wh0DPz/exec';
+  const url = 'https://script.google.com/macros/s/AKfycbxzmkMdxWyeyKOiJvNUkuIEkFe8D8aDU7dJYjpyRjmKWqI-CBvnbhP0pP_bA0FcmI9Q/exec';
   url
     ? ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK)
     : ui.alert('⚠️ Non déployée', 'Extensions › Apps Script › Déployer › Nouveau déploiement', ui.ButtonSet.OK);
