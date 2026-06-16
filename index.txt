@@ -52,6 +52,7 @@
     .u-avatar { width: 42px; height: 42px; background: linear-gradient(135deg, var(--primary), var(--accent)); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 15px; flex-shrink: 0; }
     .u-name  { font-weight: 700; font-size: 15px; }
     .u-grade { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .u-counter { background: #e8f5e9; color: var(--present-bg); border: 1.5px solid #a5d6a7; border-radius: 20px; padding: 6px 14px; font-weight: 800; font-size: 13px; display: flex; align-items: center; gap: 6px; }
     .btn-change { border: 1.5px solid var(--border); background: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; font-family: inherit; cursor: pointer; color: var(--muted); transition: all .2s; white-space: nowrap; }
     .btn-change:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -139,8 +140,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const S = { view:'loading', activites:[], effectif:[], user:null, statuts:{} };
-const $ = id => document.getElementById(id);
+const S = { view:'loading', activites:[], effectif:[], user:null, statuts:{}, totalJours:0 };const $ = id => document.getElementById(id);
 
 function render() {
   const app = $('app');
@@ -199,7 +199,7 @@ function login() {
   $('app').innerHTML = `<div class="loading"><div class="spinner"></div><p>Chargement…</p></div>`;
   google.script.run
     .withSuccessHandler(res => {
-      if (res.success) { S.statuts = res.statuts; S.view = 'main'; render(); }
+      if (res.success) { S.statuts = res.statuts; S.totalJours = res.totalJours; S.view = 'main'; render(); }
       else { toast('Erreur : '+res.error,'err'); S.view='login'; render(); }
     })
     .withFailureHandler(() => { toast('Erreur de connexion','err'); S.view='login'; render(); })
@@ -219,7 +219,10 @@ function renderMain(app) {
             <div class="u-grade">${esc(S.user.grade||'Personnel')}</div>
           </div>
         </div>
-        <button class="btn-change" onclick="logout()">Changer</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="u-counter" id="web-total-jours">⏱ ${S.totalJours > 0 ? S.totalJours + ' jours' : '0 jour'}</div>
+          <button class="btn-change" onclick="logout()">Changer</button>
+        </div>
       </div>
       <div class="sec-title">${nb} activité${nb!==1?'s':''}</div>
       ${nb===0
@@ -328,6 +331,13 @@ function setStatut(activiteId, statut) {
     .withSuccessHandler(res => {
       if (res.success) {
         S.statuts[activiteId] = statut;
+        
+        // ─── ICI : LES 3 LIGNES AJOUTÉES CONTRE LE COMPTEUR ───
+        S.totalJours = res.totalJours;
+        const counterEl = $('web-total-jours');
+        if (counterEl) counterEl.textContent = '⏱ ' + (S.totalJours > 0 ? S.totalJours + ' jours' : '0 jour');
+        // ─────────────────────────────────────────────────────
+
         const cardEl = $('card-'+activiteId);
         if (cardEl && a) cardEl.outerHTML = cardHtml(a);
         toast('✅ Statut mis à jour','ok');
