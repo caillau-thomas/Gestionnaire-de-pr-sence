@@ -1,5 +1,5 @@
 // ============================================================
-//  GESTION DES ACTIVITÉS — Code.gs  (v6.5 - Fix Heures & Meta)
+//  GESTION DES ACTIVITÉS — Code.gs  (v8 - Jours/Semaine Adaptable)
 // ============================================================
 
 const SHEET_NAMES = {
@@ -47,13 +47,13 @@ function getStatutsByEmail(email) {
       });
     }
 
-    // 2. Calculer le total de jours en direct pour cet utilisateur
+    // 2. Calculer le total de jours en direct pour cet utilisateur (adapté jours/semaine)
     activites.forEach(a => {
       const s = statuts[a.id] || 'En attente';
       if (a.type === 'Mission') {
         if (s && s !== 'En attente' && s !== 'Indisponible') {
           const semCount = s.split(',').map(x => x.trim()).filter(x => /^S\d+$/i.test(x)).length;
-          totalJours += (semCount * 7); // 1 semaine = 7 jours
+          totalJours += (semCount * a.joursParSem); 
         }
       } else {
         if (s === 'Présent' && a.duree) {
@@ -83,7 +83,6 @@ function setStatut(email, activiteId, statut) {
     _saveStatutToResponses(ss, email, activiteId, statut);
     _updateDashboard(ss);
     
-    // RENVOYER LE NOUVEAU TOTAL CALCULÉ AU WEB
     return getStatutsByEmail(email);
   } catch (err) {
     return { success: false, error: err.message };
@@ -124,7 +123,7 @@ function sendReminderEmails() {
   if (!effectif.length)  { ui.alert('⚠️', 'Effectif vide.', ui.ButtonSet.OK); return; }
   if (!activites.length) { ui.alert('⚠️', 'Aucune activité.', ui.ButtonSet.OK); return; }
 
-  const webUrl = 'https://script.google.com/macros/s/AKfycbxzmkMdxWyeyKOiJvNUkuIEkFe8D8aDU7dJYjpyRjmKWqI-CBvnbhP0pP_bA0FcmI9Q/exec';
+  const webUrl = 'https://script.google.com/macros/s/AKfycbxy4uuxMGSDA1EiE7WOJTDiQMHnXWfItCtxA1LGACs2zIBZreWajy2x6Ru1THO_eCUf/exec';
 
   const confirm = ui.alert(
     '📧 Envoi des rappels',
@@ -195,7 +194,7 @@ function _updateDashboard(ss) {
     let label = (a.type === 'Mission' ? '[MISSION] ' : '') + a.nom;
     if (a.debut) label += '\n▶ '+a.debut;
     if (a.fin)   label += '\n⏹ '+a.fin;
-    if (a.type === 'Mission' && a.nbSemaines) label += '\n⏱ ' + a.nbSemaines + ' sem.';
+    if (a.type === 'Mission' && a.nbSemaines) label += '\n⏱ ' + a.nbSemaines + ' sem. (' + a.joursParSem + 'j/s)';
     else if (a.duree) label += '\n⏱ '+a.duree+'j';
     return label;
   })]);
@@ -212,7 +211,7 @@ function _updateDashboard(ss) {
       if (a.type === 'Mission') {
         if (s && s !== 'En attente' && s !== 'Indisponible') {
           const semCount = s.split(',').map(x => x.trim()).filter(x => /^S\d+$/i.test(x)).length;
-          joursPresents += (semCount * 7);
+          joursPresents += (semCount * a.joursParSem);
         }
       } else {
         if (s === 'Présent' && a.duree) {
@@ -260,7 +259,6 @@ function _updateDashboard(ss) {
   for (let c=4;c<=numCols;c++) dashboard.setColumnWidth(c,140);
   dashboard.setFrozenRows(1); dashboard.setFrozenColumns(3);
 
-  // FIX SANS ERREUR : On utilise une note cachée sur la cellule A1 pour stocker les IDs d'activités de manière ultra-fiable
   const targetCell = dashboard.getRange(1, 1);
   targetCell.setNote(JSON.stringify(activites.map(a => a.id)));
 }
@@ -288,7 +286,7 @@ function _fmt(val) {
       return Utilities.formatDate(val, 'Europe/Paris', 'dd/MM/yyyy HH:mm');
     }
   }
-  return String(val).trim(); // Si c'est déjà du texte (saisi à la main), on le renvoie brut
+  return String(val).trim();
 }
 
 function _readActivites(ss) {
@@ -308,8 +306,9 @@ function _readActivites(ss) {
         description : String(r[5] || ''),
         deadline    : deadlineStr,
         deadlineTs  : deadlineDate ? deadlineDate.getTime() : null,
-        type        : String(r[7] || 'Activités'),
-        nbSemaines  : r[8] ? parseInt(r[8]) : 0
+        type        : String(r[7] || 'Classique'),
+        nbSemaines  : r[8] ? parseInt(r[8]) : 0,
+        joursParSem : r[9] ? parseFloat(r[9]) : 5 // Col J (10e colonne) — Défaut 5
       };
     });
 }
@@ -327,7 +326,7 @@ function _readEffectif(ss) {
     }));
 }
 
-// ── FORMULAIRE AJOUT ACTIVITÉ (INTERFACE AVEC INPUT TEXTE MANUEL) ──
+// ── FORMULAIRE AJOUT ACTIVITÉ ───────────────────────────────
 
 function openActivityForm() {
   const html = HtmlService.createHtmlOutput(
@@ -350,7 +349,7 @@ function openActivityForm() {
   <div class="field">
     <label>Type d'Activité</label>
     <select id="type" onchange="toggleType()">
-      <option value="Activités">Activités (Présent, Absent...)</option>
+      <option value="Classique">Classique (Présent, Absent...)</option>
       <option value="Mission">Mission (Par semaines S1, S2...)</option>
     </select>
   </div>
@@ -360,7 +359,7 @@ function openActivityForm() {
   </div>
   <div class="field">
     <label>Date & Heure Début</label>
-    <div class="hint">Format libre (Ex: 18/06/2026 08:00 ou 18/06/2026)</div>
+    <div class="hint">Format libre (Ex: 18/06/2026 08:00)</div>
     <input type="text" id="debut" placeholder="JJ/MM/AAAA HH:MM">
   </div>
   <div class="field">
@@ -368,16 +367,23 @@ function openActivityForm() {
     <div class="hint">Format libre (Ex: 22/06/2026 18:00)</div>
     <input type="text" id="fin" placeholder="JJ/MM/AAAA HH:MM">
   </div>
-  <div class="field" id="Activités-dur">
+  <div class="field" id="classique-dur">
     <label>Durée (jours)</label>
     <input type="number" id="duree" placeholder="Ex: 5">
   </div>
-  <div id="mission-only" class="field">
-    <label>Nombre de semaines de la mission</label>
-    <input type="number" id="nbSemaines" min="1" max="52" value="4">
+  <div id="mission-only">
+    <div class="field">
+      <label>Nombre de semaines de la mission</label>
+      <input type="number" id="nbSemaines" min="1" max="52" value="4">
+    </div>
+    <div class="field">
+      <label>Nombre de jours par semaine</label>
+      <div class="hint">Indiquez 5, 7 ou le nombre personnalisé de votre choix</div>
+      <input type="number" id="joursParSem" min="1" max="7" value="5">
+    </div>
   </div>
   <div class="field">
-    <label>Deadline positionnement (Impératif pour le calcul web)</label>
+    <label>Deadline positionnement</label>
     <div class="hint">Format strict requis : JJ/MM/AAAA HH:MM</div>
     <input type="text" id="deadline" placeholder="Ex: 17/06/2026 23:59">
   </div>
@@ -391,7 +397,7 @@ function openActivityForm() {
     function toggleType() {
       const isMission = document.getElementById('type').value === 'Mission';
       document.getElementById('mission-only').style.display = isMission ? 'block' : 'none';
-      document.getElementById('Activités-dur').style.display = isMission ? 'none' : 'block';
+      document.getElementById('classique-dur').style.display = isMission ? 'none' : 'block';
     }
     function submitForm() {
       const data = {
@@ -401,6 +407,7 @@ function openActivityForm() {
         fin: document.getElementById('fin').value,
         duree: document.getElementById('duree').value,
         nbSemaines: document.getElementById('nbSemaines').value,
+        joursParSem: document.getElementById('joursParSem').value,
         deadline: document.getElementById('deadline').value,
         description: document.getElementById('description').value
       };
@@ -426,10 +433,8 @@ function addActiviteFromForm(data) {
       const n = parseInt(r[0]); if (!isNaN(n) && n > maxId) maxId = n;
     });
   }
-  
   const nextId = maxId + 1;
 
-  // On injecte directement la chaîne de texte tapée à la main
   sheet.appendRow([
     nextId,
     data.nom,
@@ -439,13 +444,14 @@ function addActiviteFromForm(data) {
     data.description,
     data.deadline,
     data.type,
-    data.type === 'Mission' ? data.nbSemaines : ''
+    data.type === 'Mission' ? data.nbSemaines : '',
+    data.type === 'Mission' ? data.joursParSem : '' // Inséré colonne J
   ]);
   
   _updateDashboard(ss);
 }
 
-// ── INTERCEPTIONS DES EDITS DIRECTS SUR LE DASHBOARD ────────────
+// ── INTERCEPTIONS DES EDITS DIRECTS SUR LE SCRIPT ────────────
 
 function onEdit(e) {
   const sheet = e.source.getActiveSheet();
@@ -470,7 +476,6 @@ function onEdit(e) {
     const ss = e.source;
     const effectif = _readEffectif(ss);
     
-    // FIX SANS ERREUR : Récupération propre de la note en A1
     const targetCell = sheet.getRange(1, 1);
     const noteText = targetCell.getNote();
     if (!noteText) return;
@@ -491,7 +496,7 @@ function onEdit(e) {
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('⚙️ Activités')
+    .createMenu('⚙️ Menu')
     .addItem('📝 Formulaire : Ajouter une activité', 'openActivityForm')
     .addSeparator()
     .addItem('🚀 Initialiser les feuilles',      'setup')
@@ -504,8 +509,10 @@ function onOpen() {
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
+  const actHeaders = ['ID','Activité','Date/Heure Début','Date/Heure Fin','Durée (jours)','Description','Deadline positionnement','Type','Nb Semaines','Nb Jours/Semaine'];
+
   [
-    { name: SHEET_NAMES.ACTIVITES, headers: ['ID','Activité','Date/Heure Début','Date/Heure Fin','Durée (jours)','Description','Deadline positionnement','Type','Nb Semaines'] },
+    { name: SHEET_NAMES.ACTIVITES, headers: actHeaders },
     { name: SHEET_NAMES.EFFECTIF,  headers: ['ID','Nom','Grade','Email'] },
     { name: SHEET_NAMES.REPONSES,  headers: ['Email','ActivitéID','Statut','Horodatage'] },
     { name: SHEET_NAMES.DASHBOARD, headers: null }
@@ -513,20 +520,25 @@ function setup() {
     let s = ss.getSheetByName(name);
     if (!s) s = ss.insertSheet(name);
     if (headers) {
-      s.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaed');
+      // Si la feuille existait mais manquait de colonnes (cas de la colonne J par exemple)
+      if (s.getLastRow() >= 1) {
+        const currentHeaders = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+        if (currentHeaders.length < headers.length) {
+          s.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaed');
+        }
+      } else {
+        s.getRange(1,1,1,headers.length).setValues([headers]).setFontWeight('bold').setBackground('#e8eaed');
+      }
+      
       if (name === SHEET_NAMES.ACTIVITES)
-        [60,180,160,160,90,220,160,90,90].forEach((w,i) => s.setColumnWidth(i+1,w));
+        [60,180,160,160,90,220,160,90,90,120].forEach((w,i) => s.setColumnWidth(i+1,w));
     }
   });
-  ui.alert('✅ Initialisation v6 terminée',
-    'Feuilles prêtes. Saisie de date et heure entièrement libre.',
-    ui.ButtonSet.OK);
+  ui.alert('✅ Initialisation v8 terminée', 'Structure vérifiée et colonne J "Nb Jours/Semaine" validée.', ui.ButtonSet.OK);
 }
 
 function showWebAppUrl() {
   const ui  = SpreadsheetApp.getUi();
-  const url = 'https://script.google.com/macros/s/AKfycbxzmkMdxWyeyKOiJvNUkuIEkFe8D8aDU7dJYjpyRjmKWqI-CBvnbhP0pP_bA0FcmI9Q/exec';
-  url
-    ? ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK)
-    : ui.alert('⚠️ Non déployée', 'Extensions › Apps Script › Déployer › Nouveau déploiement', ui.ButtonSet.OK);
+  const url = 'https://script.google.com/macros/s/AKfycbxy4uuxMGSDA1EiE7WOJTDiQMHnXWfItCtxA1LGACs2zIBZreWajy2x6Ru1THO_eCUf/exec';
+  url ? ui.alert('🌐 Lien de l\'application', url, ui.ButtonSet.OK) : ui.alert('⚠️ Non déployée', 'Déployer › Nouveau déploiement', ui.ButtonSet.OK);
 }
